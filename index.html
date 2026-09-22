@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Catch the Phish — Cybersecurity Awareness Game</title>
+<title>Phishing Fishing — Cybersecurity Awareness Game</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Baloo+2:wght@500;700&display=swap');
 
@@ -239,7 +239,7 @@
   <div class="overlay" id="registerScreen">
     <img class="corner-logo" id="logoRegister" alt="Ingram Micro">
     <div class="card">
-      <h1>🎣 Catch The Phish </h1>
+      <h1>🎣 Phishing Fishing</h1>
       <div class="tagline">Reel in the real messages. Report the scams.<br>First, tell us who's fishing.</div>
       <div class="field">
         <label for="playerName">Your Name</label>
@@ -784,6 +784,28 @@ async function submitScoreToServer(payload){
   }
 }
 
+/* Builds the payload (name, email, score, date, time, playedAt) and sends it.
+   Sanitizes name/email the same way the registration form does, and clamps
+   score to 0-100, so a bad/garbled campaign.total can never leak through. */
+async function submitScore(){
+  const now = new Date();
+  const payload = {
+    name: sanitizeName(player.name),
+    email: sanitizeEmail(player.email),
+    score: Math.max(0, Math.min(100, Math.round(campaign.total))),
+    date: now.toISOString().slice(0, 10),   // e.g. "2026-09-22"
+    time: now.toTimeString().slice(0, 8),   // e.g. "14:32:07" (local time)
+    playedAt: now.toISOString()             // full timestamp, e.g. "2026-09-22T14:32:07.123Z"
+  };
+  try{
+    return await submitScoreToServer(payload);
+  } catch(e){
+    // submitScoreToServer already catches its own errors, but this is a last-resort
+    // guard so a truly unexpected exception here can never break the results screen.
+    return {ok:false, reason:'unexpected', message:'Unexpected error while submitting.'};
+  }
+}
+
 /* ===================== SPAWN ===================== */
 function shouldShowShark(item){
   if(!item.bad) return false;
@@ -1143,23 +1165,9 @@ async function finishCampaign(failed){
                 mode: failed ? 'Incomplete' : 'Full Challenge', ts:Date.now()});
   markCompleted({email:normEmail(player.email), name:player.name, total:campaign.total, ts:Date.now()});
 
-  // Base schema is exactly {name, email, score}; playedAt is appended for
-  // leaderboard tracking/auditing — drop it here if your backend is strict
-  // about extra fields.
-  const payload = {
-    name: sanitizeName(player.name),
-    email: sanitizeEmail(player.email),
-    score: Math.max(0, Math.min(100, Math.round(campaign.total))),
-    playedAt: new Date().toISOString()
-  };
-  let result;
-  try{
-    result = await submitScoreToServer(payload);
-  } catch(e){
-    // submitScoreToServer already catches its own errors, but this is a last-resort
-    // guard so a truly unexpected exception here can never break the results screen.
-    result = {ok:false, reason:'unexpected', message:'Unexpected error while submitting.'};
-  }
+  // Then attempt the real server submission — payload (with date/time/playedAt)
+  // is built inside submitScore().
+  const result = await submitScore();
 
   if(result.ok){
     saveStatus.textContent = '✅ Score submitted successfully';
