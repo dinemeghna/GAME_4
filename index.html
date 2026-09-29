@@ -349,7 +349,12 @@
         <div class="stat-box"><div class="num" id="goMissed">0</div><div class="lbl">Missed / Wrong</div></div>
       </div>
       <div id="goBadges" class="badge-row"></div>
-      <div class="save-status" id="saveStatus">Saving your score…</div>
+      <div class="learn-card" id="submitReminder" style="text-align:center; border-color:#FFCB3D; background:#FFF9E9;">
+        <strong>🎣 One final step!</strong><br>
+        Your score is not recorded yet. Click <strong>Submit Score</strong> below to save your result to the leaderboard.
+      </div>
+      <button class="btn btn-primary" id="submitScoreBtn" type="button">📤 Submit Score</button>
+      <div class="save-status" id="saveStatus">👇 Don’t forget to submit your score before leaving this page.</div>
       <div>
         <button class="btn btn-secondary" id="playAgainBtn">Next Player →</button>
         <button class="btn btn-ghost" id="viewLbBtn">🏆 Leaderboard</button>
@@ -791,17 +796,26 @@ async function submitScoreToServer(payload){
    Sanitizes name/email the same way the registration form does, and clamps
    score to 0-100, so a bad/garbled campaign.total can never leak through. */
 async function submitScore(){
-  const payload = {
-    name: sanitizeName(player.name),
-    email: sanitizeEmail(player.email),
-    score: Math.max(0, Math.min(100, Math.round(campaign.total))),
-    durationSeconds: campaign.durationSeconds
-  };
   try{
+    const now = new Date();
+
+    const durationSeconds = campaign && campaign.durationSeconds !== undefined && campaign.durationSeconds !== null
+      ? campaign.durationSeconds
+      : null;
+
+    const payload = {
+      name: sanitizeName(player.name),
+      email: sanitizeEmail(player.email),
+      score: Math.max(0, Math.min(100, Math.round(campaign.total))),
+      durationSeconds: durationSeconds,
+      durationDisplay: durationSeconds !== null ? formatDuration(durationSeconds) : '',
+      date: now.toISOString().slice(0, 10),
+      time: now.toTimeString().slice(0, 8),
+      playedAt: now.toISOString()
+    };
+
     return await submitScoreToServer(payload);
   } catch(e){
-    // submitScoreToServer already catches its own errors, but this is a last-resort
-    // guard so a truly unexpected exception here can never break the results screen.
     return {ok:false, reason:'unexpected', message:'Unexpected error while submitting.'};
   }
 }
@@ -1050,9 +1064,9 @@ function updateHud(){
   scoreVal.textContent=state.score+'/'+state.cfg.maxScore;
   comboVal.textContent='x'+state.combo;
   levelVal.textContent=state.cfg.label;
-  let h='<span class="lbl">LIVES</span>';
+  let h='<span class="lbl">SHIELDS</span>';
   for(let i=0;i<state.cfg.lives;i++){
-    h += `<span class="h" style="${i<state.lives?'':'opacity:.25'}">${i<state.lives?'❤️':'🤍'}</span>`;
+    h += `<span class="h" style="${i<state.lives?'':'opacity:.25'}">${i<state.lives?'🛡️':'🤍'}</span>`;
   }
   heartsEl.innerHTML=h;
 }
@@ -1141,6 +1155,12 @@ $('lcContinueBtn').addEventListener('click', ()=>{
   startGame(campaign.order[campaign.idx]);
 });
 
+function formatDuration(seconds){
+  if(seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return '';
+  const n = Math.round(seconds);
+  return String(Math.floor(n/60)).padStart(2,'0') + ':' + String(n%60).padStart(2,'0');
+}
+
 function formatGameDuration(seconds){
   if(!Number.isFinite(seconds) || seconds<0) return '—';
   const n=Math.round(seconds);
@@ -1182,30 +1202,58 @@ async function finishCampaign(failed){
   $('gameOverScreen').classList.remove('hidden');
   if(!failed) launchConfetti();
 
-  // mandatory, automatic — one save per email, no way to skip it
+  // Keep a local copy immediately, but let the player manually submit
+  // the company-wide leaderboard score using the button below.
   const saveStatus = $('saveStatus');
-  saveStatus.textContent = 'Saving your score…';
+  const submitBtn = $('submitScoreBtn');
+  const submitReminder = $('submitReminder');
 
-  // Local copies first (these never fail due to network conditions).
   await saveLB({name:player.name, email:player.email, score:campaign.total,
                 mode: failed ? 'Incomplete' : 'Full Challenge', durationSeconds:campaign.durationSeconds, ts:Date.now()});
   updateCompleted({email:normEmail(player.email), name:player.name, total:campaign.total,
     durationSeconds:campaign.durationSeconds, ts:Date.now(),status:'pending'});
 
-  // Then attempt the real server submission — payload (with date/time/playedAt)
-  // is built inside submitScore().
+  saveStatus.textContent = '👇 Don’t forget to submit your score before leaving this page.';
+  if(submitReminder) submitReminder.classList.remove('hidden');
+  if(submitBtn){
+    submitBtn.disabled = false;
+    submitBtn.textContent = '📤 Submit Score';
+  }
+}
+
+
+let manualScoreSubmitting = false;
+$('submitScoreBtn').addEventListener('click', async ()=>{
+  if(manualScoreSubmitting) return;
+
+  const submitBtn = $('submitScoreBtn');
+  const saveStatus = $('saveStatus');
+  const submitReminder = $('submitReminder');
+
+  manualScoreSubmitting = true;
+  submitBtn.disabled = true;
+  submitBtn.textContent = '⏳ Submitting...';
+  saveStatus.textContent = 'Submitting your score to the leaderboard…';
+
   const result = await submitScore();
 
   if(result.ok){
     updateCompleted({email:normEmail(player.email),status:'sent'});
-    saveStatus.textContent = '✅ Score and duration submitted successfully';
-  } else if(result.reason === 'not_configured'){
-    saveStatus.textContent = '✅ Score recorded locally (server not configured yet)';
+    if(submitReminder) submitReminder.classList.add('hidden');
+    saveStatus.textContent = '✅ Score submitted successfully! Your result is saved to the leaderboard.';
+    submitBtn.textContent = '✓ Score Submitted';
   } else {
-    saveStatus.textContent = `⚠️ Score saved locally — could not submit to server (${result.message})`;
+    manualScoreSubmitting = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = '↻ Retry Submission';
+    if(result.reason === 'not_configured'){
+      saveStatus.textContent = '⚠️ Leaderboard submission is not configured. Please contact the game administrator.';
+    } else {
+      saveStatus.textContent = `⚠️ Submission could not be confirmed (${result.message}). Please click Retry Submission.`;
+    }
     console.error('Score submission failed:', result);
   }
-}
+});
 
 function computeCampaignBadges(acc, failed, levelsPlayed){
   const b=[];
