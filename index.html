@@ -755,7 +755,7 @@ function esc(s){ const d=document.createElement('div'); d.textContent=String(s==
    gracefully: if the request fails for any reason, the score is still
    kept locally (see saveLB / markCompleted) so nothing is lost — the
    player just sees a note that the server sync didn't go through. */
-const SCORE_API_URL = 'https://320da500b1c942b5821790fc274f46.a4.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/08/workflows/b5426afdfd9541b4b04cc0cb3e3f9bb9/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=s3Gu_RcHrJ4axB4IdWGSUDRuNVXhFbQsmXXYh-9Pezg';
+const SCORE_API_URL = 'https://320da500b1c942b5821790fc274f46.a4.environment.api.powerplatform.com/powerautomate/automations/direct/cu/27/workflows/09f07b9104dc4f76a6cd1cc5961176c2/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=PrHDzktwrGR0jXl62V4VlWItC6GIwaXVWrBxfX2rdOs';
 const SUBMIT_TIMEOUT_MS = 12000;
 
 async function submitScoreToServer(payload){
